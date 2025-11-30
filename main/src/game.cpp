@@ -58,7 +58,7 @@ void Game::key_pressed(sf::Keyboard::Scancode keycode) {
 
 bool isStartButton(const std::unique_ptr<Gui>& btn) {
     auto txtbtn = dynamic_cast<TextButton*>(btn.get());
-    return txtbtn && txtbtn->GetText().getString() == "Start Game";
+    return txtbtn && txtbtn->GetLabel().GetText().getString() == "Start Game";
 }
 
 void Game::find_clicked(sf::Event event) {
@@ -75,7 +75,7 @@ void Game::find_clicked(sf::Event event) {
         auto rect = dynamic_cast<sf::RectangleShape*>(ui->GetHitbox().get());
         if (!rect) { continue; }
 
-        ui->SetColor(600, sf::Color::Red, rect->getFillColor());
+        ui->SetColor(sf::Color::Red, 600, rect->getFillColor());
 
         auto it = std::find_if(
             ui_objects.begin(),
@@ -101,11 +101,11 @@ void Game::find_mouse_move(sf::Event event) {
         if (!ui_obj) { continue; }
         if (ui_obj->WasPressed()) { continue; }
         if (ui_obj->MouseHover(mousePos)) {
-            ui_obj->SetColor(20, sf::Color::Yellow, ui_obj->GetDefaultColor());
+            ui_obj->SetColor(sf::Color::Yellow, 20, ui_obj->GetDefaultColor());
             continue;
         }
         if ( (!ui_obj->WasPressed()) && ui_obj->GetColor() == ui_obj->GetDefaultColor()) { continue; }
-        ui_obj->SetColor(40, ui_obj->GetDefaultColor());
+        ui_obj->SetColor(ui_obj->GetDefaultColor());
     }
 }
 
@@ -136,7 +136,7 @@ void Game::handle_events() {
 }
 
 void Game::NewButton(
-    const char* name,
+    const std::string& name,
     ShapeSize size,
     sf::Vector2f pos,
     sf::Color fillColor,
@@ -164,13 +164,7 @@ int Game::loop() {
         (this->window.getSize().y - buttonSize.y) / 2.f
     };
 
-    NewTextButton(
-        "StartButton",
-        buttonSize,
-        pos,
-        sf::Color::Cyan,
-        "Start Game"
-    );
+    NewButton( "StartButton", buttonSize, pos, sf::Color::Cyan, "Start Game" );
 
     while (window.isOpen()) {
         this->handle_events();
@@ -183,7 +177,7 @@ int Game::loop() {
         for (auto& ui : this->ui_objects) {
             this->window.draw(*ui->GetHitbox());
             if (auto ui_obj = dynamic_cast<TextButton*>(ui.get())) {
-                this->window.draw(ui_obj->GetText());
+                this->window.draw(ui_obj->GetLabel().GetText());
             }
         }
 
