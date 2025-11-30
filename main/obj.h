@@ -11,6 +11,7 @@
 
 using ShapePtr = std::unique_ptr<sf::Drawable>;
 using ShapeSize = std::variant<sf::Vector2f, float>;
+using GuiAttachment = std::vatiant<std::string, const char*, sf::Image>;
 
 namespace obj {
     ShapePtr NewShape(ShapeSize size, sf::Vector2f pos, sf::Color fillColor);
