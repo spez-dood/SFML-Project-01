@@ -142,9 +142,19 @@ void Game::NewButton(
     sf::Color fillColor,
     GuiAttachment label
 ) {
-    this->ui_objects.push_back(
-        std::make_unique<TextButton>(this->window, name, label, size, pos, fillColor)
-    );
+    if (!std::holds_alternative<std::string>(label) && !std::holds_alternative<const char*>(label)) {
+        return;
+    }
+
+    std::string _label;
+
+    if (std::holds_alternative<std::string>(label)) {
+        _label = std::get<std::string>(label);
+    } else {
+        _label = std::get<const char*>(label);
+    }
+
+    this->ui_objects.push_back(std::make_unique<TextButton>(this->window, name, _label, size, pos, fillColor));
 }
 
 int Game::loop() {
