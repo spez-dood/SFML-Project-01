@@ -1,4 +1,4 @@
-Run the makefile, or compile the project including SFML graphics libraries.
+Run the makefile (linux only atm), or compile the project including SFML graphics libraries.
 It should build default-settings.ini and settings.ini on the initial run/if settings.ini is missing.
 
 Currently, it's just a black window with a single button with some text on it.
