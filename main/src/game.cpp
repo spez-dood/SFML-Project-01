@@ -135,12 +135,12 @@ void Game::handle_events() {
     }
 }
 
-void Game::NewTextButton(
+void Game::NewButton(
     const char* name,
     ShapeSize size,
     sf::Vector2f pos,
     sf::Color fillColor,
-    const std::string& label
+    GuiAttachment label
 ) {
     this->ui_objects.push_back(
         std::make_unique<TextButton>(this->window, name, label, size, pos, fillColor)
