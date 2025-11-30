@@ -24,7 +24,7 @@ private:
     ShapeSize size = sf::Vector2f{200.f,90.f},
     sf::Vector2f pos = sf::Vector2f{400.f, 300.f},
     sf::Color fillColor = sf::Color::White,
-    const std::string& label = "Click me!"
+    GuiAttachment label = "Click me!"
     );
 
     GameState state = GameState::MainMenu;
