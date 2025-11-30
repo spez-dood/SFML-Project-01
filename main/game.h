@@ -19,7 +19,7 @@ private:
     void key_pressed(sf::Keyboard::Scancode keycode);
     void handle_events();
 
-    void NewTextButton(
+    void NewButton(
     const char* name = "TextButton",
     ShapeSize size = sf::Vector2f{200.f,90.f},
     sf::Vector2f pos = sf::Vector2f{400.f, 300.f},
