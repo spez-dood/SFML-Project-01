@@ -1,8 +1,5 @@
 #include "game.h"
 
-#include <thread>
-#include <chrono>
-
 using namespace obj;
 
 void Game::build_settingsINI(SI_Error rc) {
