@@ -157,21 +157,37 @@ void Game::loop() {
 }
 
 int Game::Run() {
-    sf::Vector2f titleSize{260.f, 120.f};
-    sf::Vector2f titlePos{
+    GuiConfig titleConfig;
+    titleConfig.type = GuiType::TextBox;
+    titleConfig.name = "TitleBar";
+    titleConfig.SetSize({260.f, 120.f});
+    auto titleSize = titleConfig.SizeVec();
+    titleConfig.pos = {
         (this->window.getSize().x - titleSize.x) / 2.f,
         (this->window.getSize().y - titleSize.y) / 5.f
     };
+    titleConfig.fillColor = sf::Color::Transparent;
+    titleConfig.attachment = "WELCOME";
+    titleConfig.charSize = 36;
+    titleConfig.textColor = sf::Color::Green;
 
-    sf::Vector2f buttonSize{200.f, 90.f};
-    sf::Vector2f buttonPos {
+    GuiConfig buttonConfig;
+    buttonConfig.type = GuiType::TextButton;
+    buttonConfig.name = "StartButton";
+    buttonConfig.SetSize({200.f, 90.f});
+    auto buttonSize = buttonConfig.SizeVec();
+    buttonConfig.pos = sf::Vector2f{
         (this->window.getSize().x - buttonSize.x) / 2.f,
         (this->window.getSize().y - buttonSize.y) / 2.f
     };
+    buttonConfig.fillColor = sf::Color(240, 180, 20);
+    buttonConfig.attachment = "Start Game";
+    buttonConfig.charSize = 18;
+    buttonConfig.textColor = sf::Color::Black;
 
-    NewGui(this->ui_objects, GuiType::TextBox, "TitleBar", titleSize, titlePos, sf::Color::Transparent, "WELCOME", 32, sf::Color::Green );
+    NewGui(this->ui_objects, titleConfig);
 
-    NewGui(this->ui_objects, GuiType::TextButton, "StartButton", buttonSize, buttonPos, sf::Color::Cyan, "Start Game", 16, sf::Color::Black );
+    NewGui(this->ui_objects, buttonConfig);
 
     this->loop();
 
