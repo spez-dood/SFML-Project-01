@@ -1,11 +1,15 @@
 #include "game.h"
 
+#include <thread>
+#include <chrono>
+
 using namespace obj;
 
 void Game::build_settingsINI(SI_Error rc) {
     printf("\nsettings.ini not found! Building from default...\n");
 
     CSimpleIniA def_config;
+    def_config.SetUnicode();
     SI_Error def_rc = def_config.LoadFile("default-settings.ini");
     if (def_rc < 0) {
         printf("\ndefault-settings.ini not found! Building...\n");
@@ -15,22 +19,19 @@ void Game::build_settingsINI(SI_Error rc) {
         def_rc = def_config.SetValue("Window", "MaxFPS", "60");
         def_rc = def_config.SetValue("Window", "VSync", "True");
         def_rc = def_config.SetValue("Window", "Title", "Vector Art");
-
     }
+
     std::string data;
     def_rc = def_config.Save(data);
     def_rc = def_config.SaveFile("default-settings.ini");
     def_rc = def_config.SaveFile("settings.ini");
 
     rc = this->config.LoadFile("Settings.ini");
+    if (rc < 0) { this->build_settingsINI(rc); }
 }
 
-Game::Game() {
-    this->config.SetUnicode();
-    SI_Error rc = this->config.LoadFile("settings.ini");
-    if (rc < 0) { build_settingsINI(rc); }
-    
-
+void Game::GetSettings(SI_Error rc) {
+    if (rc < 0) { this->build_settingsINI(rc); }
     int width = std::stoi(this->config.GetValue("Window", "Width", "800"));
     int height = std::stoi(this->config.GetValue("Window", "Height", "600"));
     int max_fps = std::stoi(this->config.GetValue("Window", "MaxFPS", "60"));
@@ -40,7 +41,12 @@ Game::Game() {
     this->window.create(sf::VideoMode(width, height), title);
     this->window.setFramerateLimit(max_fps);
     this->window.setVerticalSyncEnabled(vsync);
+}
 
+Game::Game() {
+    this->config.SetUnicode();
+    SI_Error rc = this->config.LoadFile("settings.ini");
+    this->GetSettings(rc);
     this->state = GameState::MainMenu;
 }
 
@@ -56,11 +62,6 @@ void Game::key_pressed(sf::Keyboard::Scancode keycode) {
     }
 }
 
-bool isStartButton(const std::unique_ptr<Gui>& btn) {
-    auto txtbtn = dynamic_cast<TextButton*>(btn.get());
-    return txtbtn && txtbtn->GetLabel().GetText().getString() == "Start Game";
-}
-
 void Game::find_clicked(sf::Event event) {
     if (event.mouseButton.button != sf::Mouse::Left) { return; }
    
@@ -72,21 +73,11 @@ void Game::find_clicked(sf::Event event) {
     for (auto& ui: this->ui_objects) {
         if (!ui->MouseHover(mousePos)) { continue; }
 
-        auto rect = dynamic_cast<sf::RectangleShape*>(ui->GetHitbox().get());
-        if (!rect) { continue; }
+        auto btn = dynamic_cast<TextButton*>(ui.get());
+        if ( (!btn) || (btn && btn->GetText().getString() != "Start Game") ) { continue; }
 
-        ui->SetColor(sf::Color::Red, 600, rect->getFillColor());
-
-        auto it = std::find_if(
-            ui_objects.begin(),
-            ui_objects.end(),
-            isStartButton
-        );
-
-        if (it != ui_objects.end()) {
-            this->ui_objects.erase(it);
-            this->state = GameState::Playing;
-        }
+        this->ui_objects.clear();
+        this->state = GameState::Playing;
     }
 }
 
@@ -98,13 +89,12 @@ void Game::find_mouse_move(sf::Event event) {
 
     for (auto& ui : this->ui_objects) {
         auto ui_obj = static_cast<Button*>(ui.get());
-        if (!ui_obj) { continue; }
-        if (ui_obj->WasPressed()) { continue; }
+        if ( !ui_obj || (ui_obj && ui_obj->GetTimer().active) ) { continue; }
         if (ui_obj->MouseHover(mousePos)) {
-            ui_obj->SetColor(sf::Color::Yellow, 20, ui_obj->GetDefaultColor());
+            ui_obj->SetColor(sf::Color::Yellow);
             continue;
         }
-        if ( (!ui_obj->WasPressed()) && ui_obj->GetColor() == ui_obj->GetDefaultColor()) { continue; }
+        if ( (!ui_obj->GetTimer().active) && ui_obj->GetColor() == ui_obj->GetDefaultColor()) { continue; }
         ui_obj->SetColor(ui_obj->GetDefaultColor());
     }
 }
@@ -135,53 +125,62 @@ void Game::handle_events() {
     }
 }
 
-void Game::NewButton(
-    const std::string& name,
-    ShapeSize size,
-    sf::Vector2f pos,
-    sf::Color fillColor,
-    GuiAttachment label
-) {
-    if (!std::holds_alternative<std::string>(label) && !std::holds_alternative<const char*>(label)) {
-        return;
+void Game::UpdateGui() {
+    for (auto& ui : this->ui_objects) {
+        ui->Update(this->window);
     }
-
-    std::string _label;
-
-    if (std::holds_alternative<std::string>(label)) {
-        _label = std::get<std::string>(label);
-    } else {
-        _label = std::get<const char*>(label);
-    }
-
-    this->ui_objects.push_back(std::make_unique<TextButton>(this->window, name, _label, size, pos, fillColor));
 }
 
-int Game::loop() {
+void Game::DrawText(auto given) {
+    if (auto draw_obj = dynamic_cast<TextButton*>(given.get())) {
+        this->window.draw(draw_obj->GetText());
+    } else if (auto draw_obj = dynamic_cast<TextBox*>(given.get())) {
+        this->window.draw(draw_obj->GetText());
+    }
+}
+
+void Game::DrawGui() {
+    for (auto& ui : this->ui_objects) {
+        this->window.draw(*ui->GetHitbox());
+
+        if (auto ui_obj = dynamic_cast<TextButton*>(ui.get())) {
+            this->window.draw(ui_obj->GetText());
+        } else if (auto ui_obj = dynamic_cast<TextBox*>(ui.get())) {
+            this->window.draw(ui_obj->GetText());
+        }
+    }
+}
+
+void Game::loop() {
+    while (this->window.isOpen()) {
+        this->handle_events();
+        this->window.clear(sf::Color::Black);
+
+        this->UpdateGui();
+        this->DrawGui();
+
+        this->window.display();
+    }
+}
+
+int Game::Run() {
+    sf::Vector2f titleSize{260.f, 120.f};
+    sf::Vector2f titlePos{
+        (this->window.getSize().x - titleSize.x) / 2.f,
+        (this->window.getSize().y - titleSize.y) / 5.f
+    };
+
     sf::Vector2f buttonSize{200.f, 90.f};
-    sf::Vector2f pos {
+    sf::Vector2f buttonPos {
         (this->window.getSize().x - buttonSize.x) / 2.f,
         (this->window.getSize().y - buttonSize.y) / 2.f
     };
 
-    NewButton( "StartButton", buttonSize, pos, sf::Color::Cyan, "Start Game" );
+    NewGui(this->ui_objects, GuiType::TextBox, "TitleBar", titleSize, titlePos, sf::Color::Transparent, "WELCOME", 32, sf::Color::Green );
 
-    while (window.isOpen()) {
-        this->handle_events();
-        this->window.clear(sf::Color::Black);
+    NewGui(this->ui_objects, GuiType::TextButton, "StartButton", buttonSize, buttonPos, sf::Color::Cyan, "Start Game", 16, sf::Color::Black );
 
-        for (auto& ui : this->ui_objects) {
-            ui->Update(this->window);
-        }
+    this->loop();
 
-        for (auto& ui : this->ui_objects) {
-            this->window.draw(*ui->GetHitbox());
-            if (auto ui_obj = dynamic_cast<TextButton*>(ui.get())) {
-                this->window.draw(ui_obj->GetLabel().GetText());
-            }
-        }
-
-        this->window.display();
-    }
     return 0;
 }
