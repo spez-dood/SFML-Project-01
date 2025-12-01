@@ -23,7 +23,7 @@ void Game::build_settingsINI(SI_Error rc) {
     def_rc = def_config.SaveFile("default-settings.ini");
     def_rc = def_config.SaveFile("settings.ini");
 
-    rc = this->config.LoadFile("Settings.ini");
+    rc = this->config.LoadFile("settings.ini");
     if (rc < 0) { this->build_settingsINI(rc); }
 }
 
