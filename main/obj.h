@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 #include <variant>
+#include <optional>
 
 namespace obj {
     using ShapePtr = std::unique_ptr<sf::Drawable>;
@@ -33,19 +34,41 @@ namespace obj {
         : duration_ms(duration), active(isActive) {}
     };
 
+    struct GuiConfig {
+        GuiType type = GuiType::Frame;
+        std::string name = "Gui";
+        ShapeSize size = sf::Vector2f{200.f, 90.f};
+        sf::Vector2f pos = sf::Vector2f{400.f, 300.f};
+        sf::Color fillColor = sf::Color::White;
+
+        std::optional<GuiAttachment> attachment = std::nullopt;
+
+        std::optional<unsigned int> charSize = std::nullopt;
+        std::optional<sf::Color> textColor = std::nullopt;
+
+        std::optional<std::string> GetLabelString() const {
+            if (!attachment) return std::nullopt;
+            if (auto ps = std::get_if<std::string>(&*attachment)) return *ps;
+            if (auto pc = std::get_if<const char*>(&*attachment)) return std::string(*pc);
+            return std::nullopt;
+        }
+
+        void SetSize(const sf::Vector2f& v) { size = v; }
+        void SetSize(float radius) { size = radius; }
+
+        sf::Vector2f SizeVec() const {
+            if (auto pv = std::get_if<sf::Vector2f>(&size)) return *pv;
+            return sf::Vector2f{std::get<float>(size), std::get<float>(size)};
+        }
+    };
+
     class TextLabel {
     public:
-        TextLabel(
-            const std::string& label = "I'm a label!",
-            ShapeSize size = sf::Vector2f(),
-            unsigned int charSize = 16,
-            sf::Vector2f pos = sf::Vector2f(),
-            sf::Color textColor = sf::Color::White
-        ) {
+        TextLabel(GuiConfig cfg = GuiConfig{.attachment = "I'm a label!"}) {
             this->Font.loadFromFile("resource/fonts/Arial.ttf");
             this->Text.setFont(this->Font);
-            this->SetText(label, charSize, textColor);
-            this->CenterText(std::get<sf::Vector2f>(size), pos);
+            this->SetText(cfg.GetLabelString().value_or(""), cfg.charSize.value_or(16), cfg.textColor.value_or(sf::Color::Black));
+            this->CenterText(std::get<sf::Vector2f>(cfg.size), cfg.pos);
         }
 
         void SetText(
@@ -75,8 +98,7 @@ namespace obj {
         virtual ~Gui() = default;
 
         void Update(sf::RenderWindow& window) {
-            sf::Vector2f mousePos = static_cast<sf::Vector2f>(sf::Mouse::getPosition(window));
-            if (this->MouseHover(mousePos)) { return; }
+            if (this->MouseHover(static_cast<sf::Vector2f>(sf::Mouse::getPosition(window)))) { return; }
             dynamic_cast<sf::Shape*>(this->Hitbox.get())->setFillColor(this->default_color);
         }
 
@@ -101,18 +123,12 @@ namespace obj {
         }
 
     protected:
-        Gui(
-            GuiType new_type = GuiType::Frame,
-            const std::string& new_name = "Gui",
-            sf::Color fillColor = sf::Color::White,
-            ShapeSize size = ShapeSize{0.f},
-            sf::Vector2f pos = sf::Vector2f()
-        ) : 
-        Hitbox(std::move(NewShape(size, pos, fillColor))),
-        Name(new_name),
-        Type(new_type),
-        default_color(fillColor) {
-            this->SetColor(fillColor);
+        Gui(GuiConfig cfg = GuiConfig()) : 
+        Hitbox(std::move(NewShape(cfg.size, cfg.pos, cfg.fillColor))),
+        Name(cfg.name),
+        Type(cfg.type),
+        default_color(cfg.fillColor) {
+            this->SetColor(cfg.fillColor);
         }
 
         sf::Shape* Shape() const { return dynamic_cast<sf::Shape*>(this->Hitbox.get()); }
@@ -124,13 +140,7 @@ namespace obj {
 
     class Button : public Gui {
     public:
-        Button(
-            GuiType gui_type = GuiType::Button,
-            const std::string& new_name = "Button",
-            ShapeSize size = ShapeSize{0.f},
-            sf::Vector2f pos = sf::Vector2f(),
-            sf::Color fillColor = sf::Color::White
-        ) : Gui(gui_type, new_name, fillColor, size, pos) {}
+        Button(GuiConfig cfg = GuiConfig()) : Gui(cfg) {}
 
         Timer GetTimer() { return this-> press_cooldown; }
     protected:
@@ -139,62 +149,25 @@ namespace obj {
 
     class TextButton : public Button, public TextLabel {
     public:
-        TextButton(
-            const std::string& new_name = "TextButton",
-            const std::string& label = "Click me!",
-            ShapeSize size = sf::Vector2f(200.f, 90.f),
-            unsigned int charSize = 16,
-            sf::Vector2f pos = sf::Vector2f(),
-            sf::Color fillColor = sf::Color::White,
-            sf::Color textColor = sf::Color::Black
-        ) : Button(GuiType::TextButton, new_name, size, pos, fillColor),
-        TextLabel(label, size, charSize, pos, textColor) {}
+        TextButton(GuiConfig cfg = GuiConfig{.attachment = "TextButton"}) : Button(cfg), TextLabel(cfg) {}
     };
 
     class TextBox : public Gui, public TextLabel {
     public:
-        TextBox(
-            const std::string& new_name = "TextBox",
-            const std::string& label = "Text",
-            ShapeSize size = sf::Vector2f(200.f, 90.f),
-            unsigned int charSize = 16,
-            sf::Vector2f pos = sf::Vector2f(),
-            sf::Color fillColor = sf::Color::White,
-            sf::Color textColor = sf::Color::Black
-        ) : Gui(GuiType::TextBox, new_name, fillColor, size, pos),
-        TextLabel( label, size, charSize, pos, textColor) {}
+        TextBox(GuiConfig cfg = GuiConfig{.attachment = "TextBox"}) : Gui(cfg), TextLabel(cfg) {}
     };
 
     using GuiVector = std::vector<std::unique_ptr<obj::Gui>>;
 
-    inline void NewGui(
-        GuiVector& gui_objects,
-        obj::GuiType gui_type = obj::GuiType::Frame,
-        const std::string& name = "Gui",
-        obj::ShapeSize size = sf::Vector2f{200.f,90.f},
-        sf::Vector2f pos = sf::Vector2f{400.f, 300.f},
-        sf::Color fillColor = sf::Color::White,
-        obj::GuiAttachment label = "Text",
-        unsigned int charSize = 16,
-        sf::Color textColor = sf::Color::Black
-    ) {
-        auto str = std::get_if<std::string>(&label);
-        auto cstr = std::get_if<const char*>(&label);
-        if (!str && !cstr) { return; }
-
-        std::string _label = str ? *str : *cstr;
-
+    inline void NewGui(GuiVector& gui_objects, GuiConfig cfg = GuiConfig()) {
         std::unique_ptr<Gui> gui;
-        switch(gui_type) {
+        
+        switch(cfg.type) {
             case GuiType::TextButton:
-                gui = std::make_unique<TextButton>(
-                    name, _label, size, charSize, pos, fillColor, textColor
-                );
+                gui = std::make_unique<TextButton>(cfg);
                 break;
             case GuiType::TextBox:
-                gui = std::make_unique<TextBox>(
-                    name, _label, size, charSize, pos, fillColor, textColor
-                );
+                gui = std::make_unique<TextBox>(cfg);
                 break;
             default:
                 return;
