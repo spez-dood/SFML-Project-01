@@ -131,7 +131,7 @@ void Game::UpdateGui() {
     }
 }
 
-void Game::DrawText(auto given) {
+void Game::DrawText(auto& given) {
     if (auto draw_obj = dynamic_cast<TextButton*>(given.get())) {
         this->window.draw(draw_obj->GetText());
     } else if (auto draw_obj = dynamic_cast<TextBox*>(given.get())) {
