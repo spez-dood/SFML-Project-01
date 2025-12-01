@@ -12,18 +12,17 @@ namespace obj {
     using GuiAttachment = std::variant<std::string, const char*, sf::Image>;
 
     inline ShapePtr NewShape(ShapeSize size, sf::Vector2f pos, sf::Color fillColor) {
-        auto _shape = std::unique_ptr<sf::Shape>();
-        if (std::holds_alternative<sf::Vector2f>(size)) {
-            _shape = std::make_unique<sf::RectangleShape>(std::get<sf::Vector2f>(size));
-        } else {
-            _shape = std::make_unique<sf::CircleShape>(std::get<float>(size));
-        }
-        _shape->setPosition(pos.x, pos.y);
-        _shape->setFillColor(fillColor);
-        return _shape;
+        ShapePtr shapecast = std::get_if<sf::Vector2f>(&size)
+        ? ShapePtr(new sf::RectangleShape(*std::get_if<sf::Vector2f>(&size)))
+        : ShapePtr(new sf::CircleShape(*std::get_if<float>(&size)));
+
+        auto* shape = dynamic_cast<sf::Shape*>(shapecast.get());
+        shape->setPosition(pos.x, pos.y);
+        shape->setFillColor(fillColor);
+        return shapecast;
     }
 
-    enum class GuiType { Frame, Button, TextButton, TextLabel, TextBox, ScrollBar, Image };
+    enum class GuiType { Frame, Button, TextButton, TextBox, TextInput, Image };
 
     struct Timer {
         sf::Clock clock;
@@ -34,106 +33,18 @@ namespace obj {
         : duration_ms(duration), active(isActive) {}
     };
 
-    class Gui {
-    public:
-        virtual ~Gui() = default;
-
-        void Update(sf::RenderWindow& window) {
-            sf::Vector2f mousePos = static_cast<sf::Vector2f>(sf::Mouse::getPosition(window));
-            auto shape = dynamic_cast<sf::Shape*>(this->GetHitbox().get());
-            if (!shape) { return; }
-            if (this->MouseHover(mousePos)) { return; }
-            shape->setFillColor(this->GetDefaultColor());
-        }
-
-        const std::string& GetName() const { return this->Name; }
-        void SetName(const std::string& new_name) { this->Name = new_name; }
-
-        GuiType GetType() { return this->Type; }
-
-        ShapePtr& GetHitbox() { return this->Hitbox; }
-        
-        bool MouseHover(sf::Vector2f point) const {
-            return Shape() && Shape()->getGlobalBounds().contains(point);
-        }
-
-        sf::Color GetDefaultColor() const { return this->default_color; }
-        sf::Color GetColor() {
-            return Shape() ? Shape()->getFillColor() : sf::Color::Transparent;
-        }
-
-        void SetColor(
-            sf::Color goal_color = sf::Color::White,
-            int cooldown_ms = 0,
-            sf::Color resetColor = sf::Color::White
-        ) {
-            auto shape = dynamic_cast<sf::Shape*>(this->Hitbox.get());
-            if (!shape) { return; }
-            shape->setFillColor(goal_color);
-            // handle cooldown if provided...
-        }
-
-    protected:
-        Gui(sf::RenderWindow& window) : Window(window) {}
-        sf::Shape* Shape() const { return dynamic_cast<sf::Shape*>(this->Hitbox.get()); }
-        sf::RenderWindow& Window;
-        ShapePtr Hitbox;
-
-        std::string Name = "Frame";
-        GuiType Type = GuiType::Frame;
-        sf::Color default_color = sf::Color::White;
-    };
-
-    class Button : public Gui {
-    public:
-        Button(
-            sf::RenderWindow& window,
-            const std::string& new_name = "Button",
-            ShapeSize size = ShapeSize{0.f},
-            sf::Vector2f pos = sf::Vector2f(),
-            sf::Color fillColor = sf::Color::White
-        ) : Gui(window) {
-            ShapePtr new_hitbox = NewShape(size, pos, fillColor);
-
-            this->Type = GuiType::Button;
-            this->default_color = fillColor;
-
-            auto* shape = dynamic_cast<sf::Shape*>(new_hitbox.get());
-            if (shape) {
-                shape->setFillColor(fillColor);
-            }
-
-            this->Hitbox = std::move(new_hitbox);
-        }
-
-        void Cooldown(int duration_ms = 2000, sf::Color resetColor = sf::Color::White) {
-            if (!this->WasPressed()) { return; }
-            if (this->press_cooldown.clock.getElapsedTime().asMilliseconds() < this->press_cooldown.duration_ms) { return; }
-            if (auto shape = dynamic_cast<sf::Shape*>(this->Hitbox.get())) {
-                shape->setFillColor(this->default_color);
-            }
-            this->press_cooldown.active = false;
-            this->press_cooldown.duration_ms = 0;
-            this->press_cooldown.clock.restart();
-        }
-
-        bool WasPressed() const { return this->press_cooldown.active; };
-    protected:
-        Timer press_cooldown;
-    };
-
     class TextLabel {
     public:
         TextLabel(
-            sf::RenderWindow& window,
             const std::string& label = "I'm a label!",
             ShapeSize size = sf::Vector2f(),
+            unsigned int charSize = 16,
             sf::Vector2f pos = sf::Vector2f(),
             sf::Color textColor = sf::Color::White
         ) {
             this->Font.loadFromFile("resource/fonts/Arial.ttf");
             this->Text.setFont(this->Font);
-            this->SetText(label);
+            this->SetText(label, charSize, textColor);
             this->CenterText(std::get<sf::Vector2f>(size), pos);
         }
 
@@ -159,25 +70,138 @@ namespace obj {
         sf::Text Text;
     };
 
-    class TextButton : public Button {
+    class Gui {
+    public:
+        virtual ~Gui() = default;
+
+        void Update(sf::RenderWindow& window) {
+            sf::Vector2f mousePos = static_cast<sf::Vector2f>(sf::Mouse::getPosition(window));
+            if (this->MouseHover(mousePos)) { return; }
+            dynamic_cast<sf::Shape*>(this->Hitbox.get())->setFillColor(this->default_color);
+        }
+
+        const std::string& GetName() const { return this->Name; }
+        void SetName(const std::string& new_name) { this->Name = new_name; }
+
+        GuiType GetType() { return this->Type; }
+
+        ShapePtr& GetHitbox() { return this->Hitbox; }
+        
+        bool MouseHover(sf::Vector2f point) const {
+            return this->Shape() && this->Shape()->getGlobalBounds().contains(point);
+        }
+
+        sf::Color GetDefaultColor() const { return this->default_color; }
+        sf::Color GetColor() {
+            return this->Shape() ? this->Shape()->getFillColor() : sf::Color::Transparent;
+        }
+
+        void SetColor(sf::Color goal_color = sf::Color::White) {
+            this->Shape()->setFillColor(goal_color);
+        }
+
+    protected:
+        Gui(
+            GuiType new_type = GuiType::Frame,
+            const std::string& new_name = "Gui",
+            sf::Color fillColor = sf::Color::White,
+            ShapeSize size = ShapeSize{0.f},
+            sf::Vector2f pos = sf::Vector2f()
+        ) : 
+        Hitbox(std::move(NewShape(size, pos, fillColor))),
+        Name(new_name),
+        Type(new_type),
+        default_color(fillColor) {
+            this->SetColor(fillColor);
+        }
+
+        sf::Shape* Shape() const { return dynamic_cast<sf::Shape*>(this->Hitbox.get()); }
+        ShapePtr Hitbox;
+        std::string Name;
+        GuiType Type;
+        sf::Color default_color;
+    };
+
+    class Button : public Gui {
+    public:
+        Button(
+            GuiType gui_type = GuiType::Button,
+            const std::string& new_name = "Button",
+            ShapeSize size = ShapeSize{0.f},
+            sf::Vector2f pos = sf::Vector2f(),
+            sf::Color fillColor = sf::Color::White
+        ) : Gui(gui_type, new_name, fillColor, size, pos) {}
+
+        Timer GetTimer() { return this-> press_cooldown; }
+    protected:
+        Timer press_cooldown;
+    };
+
+    class TextButton : public Button, public TextLabel {
     public:
         TextButton(
-            sf::RenderWindow& window,
             const std::string& new_name = "TextButton",
             const std::string& label = "Click me!",
             ShapeSize size = sf::Vector2f(200.f, 90.f),
+            unsigned int charSize = 16,
             sf::Vector2f pos = sf::Vector2f(),
-            sf::Color fillColor = sf::Color::White
-        ) : Button(window, new_name, size, pos, fillColor),
-        textLabel(window, label, size, pos, sf::Color::Black) {}
+            sf::Color fillColor = sf::Color::White,
+            sf::Color textColor = sf::Color::Black
+        ) : Button(GuiType::TextButton, new_name, size, pos, fillColor),
+        TextLabel(label, size, charSize, pos, textColor) {}
+    };
 
-        TextLabel& GetLabel() { return textLabel; }
-    private:
-        TextLabel textLabel;
+    class TextBox : public Gui, public TextLabel {
+    public:
+        TextBox(
+            const std::string& new_name = "TextBox",
+            const std::string& label = "Text",
+            ShapeSize size = sf::Vector2f(200.f, 90.f),
+            unsigned int charSize = 16,
+            sf::Vector2f pos = sf::Vector2f(),
+            sf::Color fillColor = sf::Color::White,
+            sf::Color textColor = sf::Color::Black
+        ) : Gui(GuiType::TextBox, new_name, fillColor, size, pos),
+        TextLabel( label, size, charSize, pos, textColor) {}
     };
 
     using GuiVector = std::vector<std::unique_ptr<obj::Gui>>;
 
+    inline void NewGui(
+        GuiVector& gui_objects,
+        obj::GuiType gui_type = obj::GuiType::Frame,
+        const std::string& name = "Gui",
+        obj::ShapeSize size = sf::Vector2f{200.f,90.f},
+        sf::Vector2f pos = sf::Vector2f{400.f, 300.f},
+        sf::Color fillColor = sf::Color::White,
+        obj::GuiAttachment label = "Text",
+        unsigned int charSize = 16,
+        sf::Color textColor = sf::Color::Black
+    ) {
+        auto str = std::get_if<std::string>(&label);
+        auto cstr = std::get_if<const char*>(&label);
+        if (!str && !cstr) { return; }
+
+        std::string _label = str ? *str : *cstr;
+
+        std::unique_ptr<Gui> gui;
+        switch(gui_type) {
+            case GuiType::TextButton:
+                gui = std::make_unique<TextButton>(
+                    name, _label, size, charSize, pos, fillColor, textColor
+                );
+                break;
+            case GuiType::TextBox:
+                gui = std::make_unique<TextBox>(
+                    name, _label, size, charSize, pos, fillColor, textColor
+                );
+                break;
+            default:
+                return;
+        }
+
+        gui_objects.push_back(std::move(gui));
+    }
 }
 
 #endif
