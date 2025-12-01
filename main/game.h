@@ -21,7 +21,7 @@ protected:
     void handle_events();
     void UpdateGui();
     void DrawGui();
-    void DrawText(auto given);
+    void DrawText(auto& given);
     void loop();
 
 private:
