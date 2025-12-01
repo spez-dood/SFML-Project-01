@@ -143,11 +143,7 @@ void Game::DrawGui() {
     for (auto& ui : this->ui_objects) {
         this->window.draw(*ui->GetHitbox());
 
-        if (auto ui_obj = dynamic_cast<TextButton*>(ui.get())) {
-            this->window.draw(ui_obj->GetText());
-        } else if (auto ui_obj = dynamic_cast<TextBox*>(ui.get())) {
-            this->window.draw(ui_obj->GetText());
-        }
+        this->DrawText(ui);
     }
 }
 
