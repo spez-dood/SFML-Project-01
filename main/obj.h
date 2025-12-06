@@ -1,29 +1,35 @@
-#ifndef obj_h
-#define obj_h
+#ifndef gui_h
+#define gui_h
 
 #include <SFML/Graphics.hpp>
-#include <memory>
-#include <vector>
-#include <variant>
 #include <optional>
+#include <memory>
+#include <variant>
+#include <vector>
+#include <functional>
+#include <string>
 
-namespace obj {
-    using ShapePtr = std::unique_ptr<sf::Drawable>;
+namespace gui {
+    using DrawPtr = std::unique_ptr<sf::Drawable>;
     using ShapeSize = std::variant<sf::Vector2f, float>;
+    using GuiPtr = std::unique_ptr<class Gui>;
     using GuiAttachment = std::variant<std::string, const char*, sf::Image>;
 
-    inline ShapePtr NewShape(ShapeSize size, sf::Vector2f pos, sf::Color fillColor) {
-        ShapePtr shapecast = std::get_if<sf::Vector2f>(&size)
-        ? ShapePtr(new sf::RectangleShape(*std::get_if<sf::Vector2f>(&size)))
-        : ShapePtr(new sf::CircleShape(*std::get_if<float>(&size)));
+    enum class GuiType { Frame, Button, TextButton, TextBox, TextInput, Image };
 
-        auto* shape = dynamic_cast<sf::Shape*>(shapecast.get());
-        shape->setPosition(pos.x, pos.y);
-        shape->setFillColor(fillColor);
-        return shapecast;
+    inline sf::Shape* get_shape(const DrawPtr& shape) {
+        return dynamic_cast<sf::Shape*>(shape.get());
     }
 
-    enum class GuiType { Frame, Button, TextButton, TextBox, TextInput, Image };
+    inline DrawPtr NewShape(ShapeSize size, sf::Vector2f pos, sf::Color fillColor) {
+        DrawPtr shape = std::get_if<sf::Vector2f>(&size)
+        ? DrawPtr(new sf::RectangleShape(*std::get_if<sf::Vector2f>(&size)))
+        : DrawPtr(new sf::CircleShape(*std::get_if<float>(&size)));
+
+        get_shape(shape)->setPosition(pos.x, pos.y);
+        get_shape(shape)->setFillColor(fillColor);
+        return shape;
+    }
 
     struct Timer {
         sf::Clock clock;
@@ -37,24 +43,22 @@ namespace obj {
     struct GuiConfig {
         GuiType type = GuiType::Frame;
         std::string name = "Gui";
+        DrawPtr hitbox = nullptr;
         ShapeSize size = sf::Vector2f{200.f, 90.f};
         sf::Vector2f pos = sf::Vector2f{400.f, 300.f};
         sf::Color fillColor = sf::Color::White;
+        sf::Color defaultColor = sf::Color::White;
 
         std::optional<GuiAttachment> attachment = std::nullopt;
-
         std::optional<unsigned int> charSize = std::nullopt;
         std::optional<sf::Color> textColor = std::nullopt;
 
         std::optional<std::string> GetLabelString() const {
             if (!attachment) return std::nullopt;
-            if (auto ps = std::get_if<std::string>(&*attachment)) return *ps;
-            if (auto pc = std::get_if<const char*>(&*attachment)) return std::string(*pc);
+            if (auto ps = std::get_if<std::string>(&*attachment)) { return *ps; }
+            if (auto pc = std::get_if<const char*>(&*attachment)) { return std::string(*pc); }
             return std::nullopt;
         }
-
-        void SetSize(const sf::Vector2f& v) { size = v; }
-        void SetSize(float radius) { size = radius; }
 
         sf::Vector2f SizeVec() const {
             if (auto pv = std::get_if<sf::Vector2f>(&size)) return *pv;
@@ -64,20 +68,24 @@ namespace obj {
 
     class TextLabel {
     public:
-        TextLabel(GuiConfig cfg = GuiConfig{.attachment = "I'm a label!"}) {
+        TextLabel(const GuiConfig& cfg) {
             this->Font.loadFromFile("resource/fonts/Arial.ttf");
             this->Text.setFont(this->Font);
-            this->SetText(cfg.GetLabelString().value_or(""), cfg.charSize.value_or(16), cfg.textColor.value_or(sf::Color::Black));
-            this->CenterText(std::get<sf::Vector2f>(cfg.size), cfg.pos);
+            this->SetTextSize(cfg.charSize.value_or(16));
+            this->SetTextColor(cfg.textColor.value_or(sf::Color::Black));
+            this->SetText(cfg.GetLabelString().value_or(""));
+            this->CenterText(cfg.SizeVec(), cfg.pos);
         }
 
-        void SetText(
-            const std::string& str = "Default!",
-            unsigned int charSize = 16,
-            sf::Color textColor = sf::Color::Black
-        ) {
+        void SetTextSize(unsigned int charSize = 16) {
             this->Text.setCharacterSize(charSize);
+        }
+
+        void SetTextColor(sf::Color textColor = sf::Color::Black) {
             this->Text.setFillColor(textColor);
+        }
+
+        void SetText(const std::string& str = "Default!") {
             this->Text.setString(str);
         }
 
@@ -97,83 +105,154 @@ namespace obj {
     public:
         virtual ~Gui() = default;
 
-        void Update(sf::RenderWindow& window) {
-            if (this->MouseHover(static_cast<sf::Vector2f>(sf::Mouse::getPosition(window)))) { return; }
-            dynamic_cast<sf::Shape*>(this->Hitbox.get())->setFillColor(this->default_color);
-        }
+        virtual void MouseEnter() { if (auto cb = onMouseEnter) cb(); }
+        virtual void MouseExit() { if (auto cb = onMouseExit) cb(); }
+        virtual void Hover() { if (auto cb = onHover) cb(); }
 
-        const std::string& GetName() const { return this->Name; }
-        void SetName(const std::string& new_name) { this->Name = new_name; }
+        GuiConfig& GetInfo() { return this->Info; }
 
-        GuiType GetType() { return this->Type; }
-
-        ShapePtr& GetHitbox() { return this->Hitbox; }
+        void SetName(const std::string& new_name) { this->Info.name = new_name; }
         
         bool MouseHover(sf::Vector2f point) const {
-            return this->Shape() && this->Shape()->getGlobalBounds().contains(point);
+            return get_shape(this->Info.hitbox)->getGlobalBounds().contains(point);
         }
 
-        sf::Color GetDefaultColor() const { return this->default_color; }
         sf::Color GetColor() {
-            return this->Shape() ? this->Shape()->getFillColor() : sf::Color::Transparent;
+            auto shape = get_shape(this->Info.hitbox);
+            return shape ? shape->getFillColor() : sf::Color::Transparent;
         }
 
         void SetColor(sf::Color goal_color = sf::Color::White) {
-            this->Shape()->setFillColor(goal_color);
+            get_shape(this->Info.hitbox)->setFillColor(goal_color);
         }
 
+        void Update(sf::RenderWindow& window) {
+            sf::Vector2f mousePos = static_cast<sf::Vector2f>(sf::Mouse::getPosition(window));
+            bool hoveringNow = this->MouseHover(mousePos);
+
+            if (!this->hover_exit_timer.active) {
+                if (hoveringNow) { return; }
+
+                this->SetColor(this->Info.fillColor);
+                return;
+            }
+
+            if (hoveringNow) {
+                this->hover_exit_timer.active = false;
+                return;
+            }
+            auto elapsed = this->hover_exit_timer.clock.getElapsedTime().asMilliseconds();
+            if (elapsed <= this->hover_exit_timer.duration_ms) { return; }
+
+            this->hover_exit_timer.active = false;
+            if (!this->is_hovered) { return; }
+            this->is_hovered = false;
+            this->MouseExit();
+        }
+
+        std::function<void()> onClick;
+        std::function<void()> onRelease;
+        std::function<void()> onClickHeld;
+        std::function<void()> onMouseEnter;
+        std::function<void()> onMouseExit;
+        std::function<void()> onHover;
+
+        void HandleMouseMove(sf::Vector2f point) {
+            if (this->MouseHover(point)) {
+                if (this->hover_exit_timer.active) { this->hover_exit_timer.active = false; }
+
+                if (this->is_hovered) {
+                    this->Hover();
+                    return;
+                }
+
+                this->is_hovered = true;
+                this->MouseEnter();
+                return;
+            }
+
+            if (!this->is_hovered) { return; }
+
+            if (!this->hover_exit_timer.active) {
+                this->hover_exit_timer.active = true;
+                this->hover_exit_timer.clock.restart();
+                this->hover_exit_timer.duration_ms = this->hover_exit_debounce_ms;
+                return;
+            }
+
+            auto elapsed = this->hover_exit_timer.clock.getElapsedTime().asMilliseconds();
+            if (elapsed >= this->hover_exit_timer.duration_ms) {
+                this->hover_exit_timer.active = false;
+                this->is_hovered = false;
+                this->MouseExit();
+            }
+        }
+
+        void SetHoverExitDebounce(int duration_ms) {
+            if (duration_ms < 0) duration_ms = 0;
+            this->hover_exit_debounce_ms = duration_ms;
+        }
     protected:
-        Gui(GuiConfig cfg = GuiConfig()) : 
-        Hitbox(std::move(NewShape(cfg.size, cfg.pos, cfg.fillColor))),
-        Name(cfg.name),
-        Type(cfg.type),
-        default_color(cfg.fillColor) {
-            this->SetColor(cfg.fillColor);
+        Gui(GuiConfig cfg = GuiConfig()) : Info(std::move(cfg)){
+            this->Info.defaultColor = this->Info.fillColor;
+            this->SetColor(Info.fillColor);
+
+            this->hover_exit_debounce_ms = 30;
+            this->hover_exit_timer = Timer(0, false);
         }
 
-        sf::Shape* Shape() const { return dynamic_cast<sf::Shape*>(this->Hitbox.get()); }
-        ShapePtr Hitbox;
-        std::string Name;
-        GuiType Type;
-        sf::Color default_color;
+        GuiConfig Info;
+        bool is_hovered = false;
+
+        Timer hover_exit_timer;
+        int hover_exit_debounce_ms = 30;
     };
 
     class Button : public Gui {
     public:
-        Button(GuiConfig cfg = GuiConfig()) : Gui(cfg) {}
+        Button(GuiConfig cfg = GuiConfig()) : Gui(std::move(cfg)) {}
+
+        void Clicked() { if (auto cb = this->onClick) cb(); }
+        void Released() { if (auto cb = this->onRelease) cb(); }
+        void Held() { if (auto cb = this->onClickHeld) cb(); }
 
         Timer GetTimer() { return this-> press_cooldown; }
     protected:
         Timer press_cooldown;
+        bool is_clicked = false;
     };
 
-    class TextButton : public Button, public TextLabel {
+    class TextButton : public TextLabel, public Button {
     public:
-        TextButton(GuiConfig cfg = GuiConfig{.attachment = "TextButton"}) : Button(cfg), TextLabel(cfg) {}
+        TextButton(GuiConfig cfg = GuiConfig()) : TextLabel(cfg), Button(std::move(cfg)) {}
     };
 
-    class TextBox : public Gui, public TextLabel {
+    class TextBox : public TextLabel, public Gui {
     public:
-        TextBox(GuiConfig cfg = GuiConfig{.attachment = "TextBox"}) : Gui(cfg), TextLabel(cfg) {}
+        TextBox(GuiConfig cfg = GuiConfig()) : TextLabel(cfg), Gui(std::move(cfg)) {}
     };
 
-    using GuiVector = std::vector<std::unique_ptr<obj::Gui>>;
+    using GuiVector = std::vector<std::unique_ptr<Gui>>;
 
-    inline void NewGui(GuiVector& gui_objects, GuiConfig cfg = GuiConfig()) {
-        std::unique_ptr<Gui> gui;
-        
+    inline Gui* NewGui(GuiVector& gui_objects, GuiConfig cfg = GuiConfig()) {
+        cfg.defaultColor = cfg.fillColor;
+        cfg.hitbox = NewShape(cfg.size, cfg.pos, cfg.fillColor);
+
+        Gui* gui;
+
         switch(cfg.type) {
             case GuiType::TextButton:
-                gui = std::make_unique<TextButton>(cfg);
+                gui = new TextButton(std::move(cfg));
                 break;
             case GuiType::TextBox:
-                gui = std::make_unique<TextBox>(cfg);
+                gui = new TextBox(std::move(cfg));
                 break;
             default:
-                return;
+                return nullptr;
         }
 
-        gui_objects.push_back(std::move(gui));
+        gui_objects.push_back(GuiPtr(gui));
+        return gui_objects.back().get();
     }
 }
 
