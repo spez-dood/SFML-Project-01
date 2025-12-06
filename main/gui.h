@@ -14,6 +14,7 @@ namespace gui {
     using ShapeSize = std::variant<sf::Vector2f, float>;
     using GuiPtr = std::unique_ptr<class Gui>;
     using GuiAttachment = std::variant<std::string, const char*, sf::Image>;
+    using PrepGui = std::function<sf::Vector2f(const gui::GuiConfig&)>;
 
     enum class GuiType { Frame, Button, TextButton, TextBox, TextInput, Image };
 
