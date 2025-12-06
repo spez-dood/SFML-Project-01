@@ -1,39 +1,69 @@
 #include "game.h"
 
-using namespace obj;
+using namespace gui;
+// using namespace entity;
 
-void Game::build_settingsINI(SI_Error rc) {
+void build_default_settingsINI(CSimpleIniA& def_config, SI_Error & def_rc) {
+    printf("\ndefault-settings.ini not found! Building...\n");
+
+    def_rc = def_config.SetValue("Window", nullptr, nullptr);
+    def_rc = def_config.SetValue("Window", "Width", "800");
+    def_rc = def_config.SetValue("Window", "Height", "600");
+    def_rc = def_config.SetValue("Window", "MaxFPS", "60");
+    def_rc = def_config.SetValue("Window", "VSync", "True");
+    def_rc = def_config.SetValue("Window", "Title", "Vector Art");
+
+    def_rc = def_config.SaveFile("default-settings.ini");
+}
+
+void Game::build_settingsINI(SI_Error rc, CSimpleIniA& def_config, SI_Error def_rc) {
     printf("\nsettings.ini not found! Building from default...\n");
 
-    CSimpleIniA def_config;
-    def_config.SetUnicode();
-    SI_Error def_rc = def_config.LoadFile("default-settings.ini");
-    if (def_rc < 0) {
-        printf("\ndefault-settings.ini not found! Building...\n");
-        def_rc = def_config.SetValue("Window", nullptr, nullptr);
-        def_rc = def_config.SetValue("Window", "Width", "800");
-        def_rc = def_config.SetValue("Window", "Height", "600");
-        def_rc = def_config.SetValue("Window", "MaxFPS", "60");
-        def_rc = def_config.SetValue("Window", "VSync", "True");
-        def_rc = def_config.SetValue("Window", "Title", "Vector Art");
+    if (def_rc < 0) { build_default_settingsINI(def_config, def_rc); }
+
+    CSimpleIniA::TNamesDepend sections;
+    def_config.GetAllSections(sections);
+
+    for (const auto& sec : sections) {
+        const char* sectionName = sec.pItem;
+
+        CSimpleIniA::TNamesDepend keys;
+        def_config.GetAllKeys(sectionName, keys);
+
+        for (const auto& key : keys) {
+            const char* keyName = key.pItem;
+            const char* value = def_config.GetValue(sectionName, keyName, "");
+
+            this->config.SetValue(sectionName, keyName, value);
+        }
     }
 
-    std::string data;
-    def_rc = def_config.Save(data);
-    def_rc = def_config.SaveFile("default-settings.ini");
-    def_rc = def_config.SaveFile("settings.ini");
+    SI_Error save_rc = this->config.SaveFile("settings.ini");
+    if (save_rc < 0) {
+        printf("Failed to save settings.ini!\n");
+    }
 
     rc = this->config.LoadFile("settings.ini");
-    if (rc < 0) { this->build_settingsINI(rc); }
+    if (rc < 0) { this->build_settingsINI(rc, def_config, def_rc); }
 }
 
 void Game::GetSettings(SI_Error rc) {
-    if (rc < 0) { this->build_settingsINI(rc); }
-    int width = std::stoi(this->config.GetValue("Window", "Width", "800"));
-    int height = std::stoi(this->config.GetValue("Window", "Height", "600"));
-    int max_fps = std::stoi(this->config.GetValue("Window", "MaxFPS", "60"));
-    bool vsync = std::string(this->config.GetValue("Window", "VSync", "True")) == "True";
-    const char* title = config.GetValue("Window", "Title", "Untitled");
+    CSimpleIniA def_config;
+    def_config.SetUnicode();
+    SI_Error def_rc = def_config.LoadFile("default-settings.ini");
+    if (rc < 0) { this->build_settingsINI(rc, def_config, def_rc); }
+
+    const char* def_width = def_config.GetValue("Window", "Width");
+    const char* def_height = def_config.GetValue("Window", "Height");
+    const char* def_maxfps = def_config.GetValue("Window", "MaxFPS");
+    const char* def_vsync = def_config.GetValue("Window", "VSync");
+    const char* def_title = def_config.GetValue("Window", "Title");
+
+    int width = std::stoi(this->config.GetValue("Window", "Width", def_width));
+    int height = std::stoi(this->config.GetValue("Window", "Height", def_height));
+    int max_fps = std::stoi(this->config.GetValue("Window", "MaxFPS", def_maxfps));
+    bool vsync = std::string(this->config.GetValue("Window", "VSync", def_vsync)) == "True";
+    const char* title = this->config.GetValue("Window", "Title", def_title);
 
     this->window.create(sf::VideoMode(width, height), title);
     this->window.setFramerateLimit(max_fps);
@@ -59,40 +89,33 @@ void Game::key_pressed(sf::Keyboard::Scancode keycode) {
     }
 }
 
-void Game::find_clicked(sf::Event event) {
-    if (event.mouseButton.button != sf::Mouse::Left) { return; }
+void Game::find_clicked(sf::Event::MouseButtonEvent mouseButton) {
+    if (mouseButton.button != sf::Mouse::Left) { return; }
    
     sf::Vector2f mousePos(
-        static_cast<float>(event.mouseButton.x),
-        static_cast<float>(event.mouseButton.y)
+        static_cast<float>(mouseButton.x),
+        static_cast<float>(mouseButton.y)
     );
 
     for (auto& ui: this->ui_objects) {
-        if (!ui->MouseHover(mousePos)) { continue; }
-
-        auto btn = dynamic_cast<TextButton*>(ui.get());
-        if ( (!btn) || (btn && btn->GetText().getString() != "Start Game") ) { continue; }
-
-        this->ui_objects.clear();
-        this->state = GameState::Playing;
+        if ( !ui->MouseHover(mousePos) || !ui->onClick ) { continue; }
+        ui->onClick();
+        return;
     }
 }
 
-void Game::find_mouse_move(sf::Event event) {
+void Game::find_mouse_move(sf::Event::MouseMoveEvent mouseMove) {
     sf::Vector2f mousePos(
-        static_cast<float>(event.mouseMove.x),
-        static_cast<float>(event.mouseMove.y)
+        static_cast<float>(mouseMove.x),
+        static_cast<float>(mouseMove.y)
     );
 
     for (auto& ui : this->ui_objects) {
-        auto ui_obj = static_cast<Button*>(ui.get());
-        if ( !ui_obj || (ui_obj && ui_obj->GetTimer().active) ) { continue; }
-        if (ui_obj->MouseHover(mousePos)) {
-            ui_obj->SetColor(sf::Color::Yellow);
-            continue;
+        if (auto btn = dynamic_cast<Button*>(ui.get())) {
+            if (btn->GetTimer().active) continue;
         }
-        if ( (!ui_obj->GetTimer().active) && ui_obj->GetColor() == ui_obj->GetDefaultColor()) { continue; }
-        ui_obj->SetColor(ui_obj->GetDefaultColor());
+
+        ui->HandleMouseMove(mousePos);
     }
 }
 
@@ -101,15 +124,130 @@ void Game::get_event(sf::Event event) {
         case sf::Event::Closed:
             this->window.close();
             break;
-        case sf::Event::KeyPressed:
+        case sf::Event::KeyPressed: {
             this->key_pressed(event.key.scancode);
-            break;
+            break; }
         case sf::Event::MouseButtonPressed: {
-            this->find_clicked(event);
+            this->find_clicked(event.mouseButton);
             break; }
         case sf::Event::MouseMoved: {
-            this->find_mouse_move(event);
+            this->find_mouse_move(event.mouseMove);
             break; }
+        default:
+            break;
+    }
+}
+
+void Game::Setup_StartScreen() {
+    NewGui(this->ui_objects, this->Prep(GuiConfig{
+        .type = GuiType::TextBox,
+        .name = "TitleBar",
+        .size = sf::Vector2f{260.f, 120.f},
+        .fillColor = sf::Color::Transparent,
+        .attachment = "WELCOME",
+        .charSize = 36,
+        .textColor = sf::Color::Green
+    }, &Game::TopCenterGui));
+    
+    Gui* startButton = NewGui(this->ui_objects, this->Prep(GuiConfig{
+        .type = GuiType::TextButton,
+        .name = "StartButton",
+        .size = sf::Vector2f{200.f, 90.f},
+        .fillColor = sf::Color(240, 180, 20),
+        .attachment = "Start Game",
+        .charSize = 18,
+        .textColor = sf::Color::Black
+    }, &Game::CenterGui));
+
+    startButton->onClick = [this]() {
+        this->state = GameState::MainMenu;
+        this->state_changed = true;
+    };
+    startButton->onMouseEnter = [startButton]() {
+        startButton->SetColor(sf::Color(200, 150, 10));
+    };
+    startButton->onMouseExit = [startButton]() {
+        startButton->SetColor(startButton->GetInfo().defaultColor);
+    };
+}
+
+void Game::Setup_MainMenu() {
+    this->ui_objects.clear();
+
+    GuiConfig titleBarConfig = GuiConfig{
+        .type = GuiType::TextBox,
+        .name = "MenuTitle",
+        .size = sf::Vector2f{220.f, 100.f},
+        .fillColor = sf::Color::Transparent,
+        .attachment = "MAIN MENU",
+        .charSize = 32,
+        .textColor = sf::Color::Yellow
+    };
+
+    NewGui(this->ui_objects, this->Prep(GuiConfig{
+        .type = GuiType::TextBox,
+        .name = "MenuTitle",
+        .size = sf::Vector2f{220.f, 100.f},
+        .fillColor = sf::Color::Transparent,
+        .attachment = "MAIN MENU",
+        .charSize = 32,
+        .textColor = sf::Color::Yellow
+    }, &Game::TopCenterGui));
+
+    Gui* playButton = NewGui(this->ui_objects, this->Prep(GuiConfig{
+        .type = GuiType::TextButton,
+        .name = "PlayButton",
+        .size = sf::Vector2f{200.f, 90.f},
+        .fillColor = sf::Color(20, 20, 80),
+        .attachment = "Play Game",
+        .charSize = 18,
+        .textColor = sf::Color::Cyan
+    }, &Game::CenterGui));
+
+    playButton->onClick = [this]() {
+        this->state = GameState::Playing;
+        this->state_changed = true;
+    };
+    playButton->onMouseEnter = [playButton]() {
+        playButton->SetColor(sf::Color(10, 150, 200));
+    };
+    playButton->onMouseExit = [playButton]() {
+        playButton->SetColor(playButton->GetInfo().defaultColor);
+    };
+}
+
+void Game::Setup_Gameplay() {
+    this->ui_objects.clear();
+
+    NewGui(this->ui_objects, this->Prep(GuiConfig{
+        .type = GuiType::TextBox,
+        .name = "GameplayLabel",
+        .size = sf::Vector2f{300.f, 100.f},
+        .fillColor = sf::Color::Transparent,
+        .attachment = "GAMEPLAY STATE - Press ESC to Quit",
+        .charSize = 24,
+        .textColor = sf::Color::White
+    }, &Game::TopCenterGui));
+}
+
+void Game::handle_state_change() {
+    if (!this->state_changed) { return; }
+
+    this->state_changed = false;
+
+    switch (this->state) {
+        case GameState::StartScreen:
+            this->Setup_StartScreen();
+            break;
+        case GameState::MainMenu:
+            this->Setup_MainMenu();
+            break;
+        case GameState::Playing:
+            this->Setup_Gameplay();
+            break;
+        case GameState::GameOver:
+            this->ui_objects.clear();
+            break;
         default:
             break;
     }
@@ -128,24 +266,18 @@ void Game::UpdateGui() {
     }
 }
 
-void Game::DrawText(auto& given) {
-    if (auto draw_obj = dynamic_cast<TextButton*>(given.get())) {
-        this->window.draw(draw_obj->GetText());
-    } else if (auto draw_obj = dynamic_cast<TextBox*>(given.get())) {
-        this->window.draw(draw_obj->GetText());
-    }
-}
-
 void Game::DrawGui() {
     for (auto& ui : this->ui_objects) {
-        this->window.draw(*ui->GetHitbox());
-
-        this->DrawText(ui);
+        this->window.draw(*ui->GetInfo().hitbox);
+        if (auto label = dynamic_cast<TextLabel*>(ui.get())) {
+            this->window.draw(label->GetText());
+        }
     }
 }
 
 void Game::loop() {
     while (this->window.isOpen()) {
+        this->handle_state_change();
         this->handle_events();
         this->window.clear(sf::Color::Black);
 
@@ -157,37 +289,8 @@ void Game::loop() {
 }
 
 int Game::Run() {
-    GuiConfig titleConfig;
-    titleConfig.type = GuiType::TextBox;
-    titleConfig.name = "TitleBar";
-    titleConfig.SetSize({260.f, 120.f});
-    auto titleSize = titleConfig.SizeVec();
-    titleConfig.pos = {
-        (this->window.getSize().x - titleSize.x) / 2.f,
-        (this->window.getSize().y - titleSize.y) / 5.f
-    };
-    titleConfig.fillColor = sf::Color::Transparent;
-    titleConfig.attachment = "WELCOME";
-    titleConfig.charSize = 36;
-    titleConfig.textColor = sf::Color::Green;
-
-    GuiConfig buttonConfig;
-    buttonConfig.type = GuiType::TextButton;
-    buttonConfig.name = "StartButton";
-    buttonConfig.SetSize({200.f, 90.f});
-    auto buttonSize = buttonConfig.SizeVec();
-    buttonConfig.pos = sf::Vector2f{
-        (this->window.getSize().x - buttonSize.x) / 2.f,
-        (this->window.getSize().y - buttonSize.y) / 2.f
-    };
-    buttonConfig.fillColor = sf::Color(240, 180, 20);
-    buttonConfig.attachment = "Start Game";
-    buttonConfig.charSize = 18;
-    buttonConfig.textColor = sf::Color::Black;
-
-    NewGui(this->ui_objects, titleConfig);
-
-    NewGui(this->ui_objects, buttonConfig);
+    this->state = GameState::StartScreen;
+    this->state_changed = true;
 
     this->loop();
 
